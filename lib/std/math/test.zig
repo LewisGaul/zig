@@ -1,32 +1,41 @@
 const std = @import("../std.zig");
 const print = std.debug.print;
+const assert = std.debug.assert;
 const meta = std.meta;
 const math = std.math;
 const bitCount = meta.bitCount;
 const nan = math.nan;
 
 // Switch to 'true' to enable debug output.
-var verbose = false;
+var verbose = true;
 
 // Include all tests.
 comptime {
     _ = @import("test/exp.zig");
-    _ = @import("test/exp2.zig");
-    _ = @import("test/expm1.zig");
-    // TODO: The implementation seems to be broken...
-    // _ = @import("test/expo2.zig");
-    _ = @import("test/ln.zig");
-    _ = @import("test/log2.zig");
-    _ = @import("test/log10.zig");
-    _ = @import("test/log1p.zig");
+    // _ = @import("test/exp2.zig");
+    // _ = @import("test/expm1.zig");
+    // // TODO: The implementation seems to be broken...
+    // // _ = @import("test/expo2.zig");
+    // _ = @import("test/ln.zig");
+    // _ = @import("test/log2.zig");
+    // _ = @import("test/log10.zig");
+    // _ = @import("test/log1p.zig");
 }
 
-/// Return negative infinity of the given float type.
-///
-/// Intended for use with 'genTests()'.
-pub fn negInf(comptime T: type) T {
-    return -math.inf(T);
-}
+pub const RoundingMode = enum {
+    Nearest,
+    Down,
+    Up,
+    TowardZero,
+};
+
+pub const FloatException = enum {
+    Invalid,
+    Inexact,
+    DivByZero,
+    Overflow,
+    Underflow,
+};
 
 // Used for the type signature.
 fn genericFloatInFloatOut(x: anytype) @TypeOf(x) {
@@ -133,23 +142,25 @@ pub fn floatFromBits(comptime T: type, bits: meta.Int(.unsigned, bitCount(T))) T
 /// The input type should be an instance of 'Testcase'.
 ///
 /// The input testcases should be a comptime iterable of 2-tuples containing
-/// input and expected output for the testcase. These values may be any of:
-///  - a comptime integer or float
-///  - a regular float (to be cast to the destination float type)
-///  - a function that takes a float type and returns the value, intended for
-///    use with math.inf() and math.nan()
+/// input and expected output for the testcase. These values may be a comptime
+/// integer or float, or a regular float, and will be cast to the destination
+/// float type.
 pub fn genTests(comptime T: type, comptime testcases: anytype) []const T {
     comptime var out_tests: []const T = &.{};
     inline for (testcases) |tc| {
-        const input: T.F = switch (@typeInfo(@TypeOf(tc[0]))) {
-            .ComptimeInt, .ComptimeFloat, .Float => tc[0],
-            else => tc[0](T.F),
-        };
-        const exp_output: T.F = switch (@typeInfo(@TypeOf(tc[1]))) {
-            .ComptimeInt, .ComptimeFloat, .Float => tc[1],
-            else => tc[1](T.F),
-        };
-        out_tests = out_tests ++ &[_]T{T.init(input, exp_output)};
+        assert(tc.len == 2);
+        out_tests = out_tests ++ &[_]T{T.init(tc[0], tc[1])};
+    }
+    return out_tests;
+}
+
+
+pub fn genTests2(comptime T: type, comptime testcases: anytype) []const T {
+    comptime var out_tests: []const T = &.{};
+    inline for (testcases) |tc| {
+        assert(tc.len == 5);
+        assert(tc[0] == RoundingMode.Nearest);
+        out_tests = out_tests ++ &[_]T{T.init(tc[1], tc[2])};
     }
     return out_tests;
 }
@@ -159,19 +170,25 @@ pub fn genTests(comptime T: type, comptime testcases: anytype) []const T {
 /// The input type should be an instance of 'Testcase'.
 pub fn nanTests(comptime T: type) []const T {
     // NaNs should always be unchanged when passed through.
-    switch (T.bits) {
-        32 => return &.{
-            T.init(nan(T.F), nan(T.F)),
-            T.init(-nan(T.F), -nan(T.F)),
-            T.init(floatFromBits(T.F, 0x7ff01234), floatFromBits(T.F, 0x7ff01234)),
-            T.init(floatFromBits(T.F, 0xfff01234), floatFromBits(T.F, 0xfff01234)),
+    comptime var out_tests: []const T = &.{};
+    const nan_values: []const T.F = &[_]T.F{
+        nan(T.F),
+        -nan(T.F),
+    } ++ comptime switch (T.bits) {
+        32 => &[_]T.F{
+            floatFromBits(T.F, 0x7fc01234), //  qNaN(0x1234)
+            floatFromBits(T.F, 0xffc01234), // -qNaN(0x1234)
+            floatFromBits(T.F, 0x7f801234), //  sNaN(0x1234)
         },
-        64 => return &.{
-            T.init(nan(T.F), nan(T.F)),
-            T.init(-nan(T.F), -nan(T.F)),
-            T.init(floatFromBits(T.F, 0x7ff0123400000000), floatFromBits(T.F, 0x7ff0123400000000)),
-            T.init(floatFromBits(T.F, 0xfff0123400000000), floatFromBits(T.F, 0xfff0123400000000)),
+        64 => &[_]T.F{
+            floatFromBits(T.F, 0x7ff8000000001234), //  qNaN(0x1234)
+            floatFromBits(T.F, 0x7ff8000000001234), // -qNaN(0x1234)
+            floatFromBits(T.F, 0xfff0000000001234), //  sNaN(0x1234)
         },
         else => @compileError("Not yet implemented for " ++ @typeName(T.F)),
+    };
+    inline for (nan_values) |val| {
+        out_tests = out_tests ++ &[_]T{T.init(val, val)};
     }
+    return out_tests;
 }
