@@ -88,7 +88,7 @@ pub fn setName(self: Thread, name: []const u8) SetNameError!void {
         .windows => {
             var buf: [max_name_len]u16 = undefined;
             const len = try std.unicode.utf8ToUtf16Le(&buf, name);
-            const byte_len = math.cast(c_ushort, len * 2) catch return error.NameTooLong;
+            const byte_len = math.cast(c_ushort, len * 2) orelse return error.NameTooLong;
 
             // Note: NT allocates its own copy, no use-after-free here.
             const unicode_string = os.windows.UNICODE_STRING{
@@ -513,7 +513,8 @@ const WindowsThreadImpl = struct {
         errdefer assert(windows.kernel32.HeapFree(heap_handle, 0, alloc_ptr) != 0);
 
         const instance_bytes = @ptrCast([*]u8, alloc_ptr)[0..alloc_bytes];
-        const instance = std.heap.FixedBufferAllocator.init(instance_bytes).allocator().create(Instance) catch unreachable;
+        var fba = std.heap.FixedBufferAllocator.init(instance_bytes);
+        const instance = fba.allocator().create(Instance) catch unreachable;
         instance.* = .{
             .fn_args = args,
             .thread = .{
@@ -526,7 +527,7 @@ const WindowsThreadImpl = struct {
         // Windows appears to only support SYSTEM_INFO.dwAllocationGranularity minimum stack size.
         // Going lower makes it default to that specified in the executable (~1mb).
         // Its also fine if the limit here is incorrect as stack size is only a hint.
-        var stack_size = std.math.cast(u32, config.stack_size) catch std.math.maxInt(u32);
+        var stack_size = std.math.cast(u32, config.stack_size) orelse std.math.maxInt(u32);
         stack_size = std.math.max(64 * 1024, stack_size);
 
         instance.thread.thread_handle = windows.kernel32.CreateThread(

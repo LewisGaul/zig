@@ -294,13 +294,14 @@ void ZigClang_detect_enum_TypeClass(clang::Type::TypeClass ty) {
         case clang::Type::DependentSizedArray:
         case clang::Type::DependentSizedExtVector:
         case clang::Type::DependentAddressSpace:
-        case clang::Type::DependentExtInt:
+        case clang::Type::DependentBitInt:
         case clang::Type::Vector:
         case clang::Type::DependentVector:
         case clang::Type::ExtVector:
         case clang::Type::FunctionProto:
         case clang::Type::FunctionNoProto:
         case clang::Type::UnresolvedUsing:
+        case clang::Type::Using:
         case clang::Type::Paren:
         case clang::Type::Typedef:
         case clang::Type::MacroQualified:
@@ -315,8 +316,8 @@ void ZigClang_detect_enum_TypeClass(clang::Type::TypeClass ty) {
         case clang::Type::Record:
         case clang::Type::Enum:
         case clang::Type::Elaborated:
-        case clang::Type::ExtInt:
         case clang::Type::Attributed:
+        case clang::Type::BitInt:
         case clang::Type::TemplateTypeParm:
         case clang::Type::SubstTemplateTypeParm:
         case clang::Type::SubstTemplateTypeParmPack:
@@ -345,6 +346,7 @@ static_assert((clang::Type::TypeClass)ZigClangType_IncompleteArray == clang::Typ
 static_assert((clang::Type::TypeClass)ZigClangType_VariableArray == clang::Type::VariableArray, "");
 static_assert((clang::Type::TypeClass)ZigClangType_Atomic == clang::Type::Atomic, "");
 static_assert((clang::Type::TypeClass)ZigClangType_Attributed == clang::Type::Attributed, "");
+static_assert((clang::Type::TypeClass)ZigClangType_BitInt == clang::Type::BitInt, "");
 static_assert((clang::Type::TypeClass)ZigClangType_BlockPointer == clang::Type::BlockPointer, "");
 static_assert((clang::Type::TypeClass)ZigClangType_Builtin == clang::Type::Builtin, "");
 static_assert((clang::Type::TypeClass)ZigClangType_Complex == clang::Type::Complex, "");
@@ -352,13 +354,12 @@ static_assert((clang::Type::TypeClass)ZigClangType_Decltype == clang::Type::Decl
 static_assert((clang::Type::TypeClass)ZigClangType_Auto == clang::Type::Auto, "");
 static_assert((clang::Type::TypeClass)ZigClangType_DeducedTemplateSpecialization == clang::Type::DeducedTemplateSpecialization, "");
 static_assert((clang::Type::TypeClass)ZigClangType_DependentAddressSpace == clang::Type::DependentAddressSpace, "");
-static_assert((clang::Type::TypeClass)ZigClangType_DependentExtInt == clang::Type::DependentExtInt, "");
+static_assert((clang::Type::TypeClass)ZigClangType_DependentBitInt == clang::Type::DependentBitInt, "");
 static_assert((clang::Type::TypeClass)ZigClangType_DependentName == clang::Type::DependentName, "");
 static_assert((clang::Type::TypeClass)ZigClangType_DependentSizedExtVector == clang::Type::DependentSizedExtVector, "");
 static_assert((clang::Type::TypeClass)ZigClangType_DependentTemplateSpecialization == clang::Type::DependentTemplateSpecialization, "");
 static_assert((clang::Type::TypeClass)ZigClangType_DependentVector == clang::Type::DependentVector, "");
 static_assert((clang::Type::TypeClass)ZigClangType_Elaborated == clang::Type::Elaborated, "");
-static_assert((clang::Type::TypeClass)ZigClangType_ExtInt == clang::Type::ExtInt, "");
 static_assert((clang::Type::TypeClass)ZigClangType_FunctionNoProto == clang::Type::FunctionNoProto, "");
 static_assert((clang::Type::TypeClass)ZigClangType_FunctionProto == clang::Type::FunctionProto, "");
 static_assert((clang::Type::TypeClass)ZigClangType_InjectedClassName == clang::Type::InjectedClassName, "");
@@ -387,6 +388,7 @@ static_assert((clang::Type::TypeClass)ZigClangType_TypeOf == clang::Type::TypeOf
 static_assert((clang::Type::TypeClass)ZigClangType_Typedef == clang::Type::Typedef, "");
 static_assert((clang::Type::TypeClass)ZigClangType_UnaryTransform == clang::Type::UnaryTransform, "");
 static_assert((clang::Type::TypeClass)ZigClangType_UnresolvedUsing == clang::Type::UnresolvedUsing, "");
+static_assert((clang::Type::TypeClass)ZigClangType_Using == clang::Type::Using, "");
 static_assert((clang::Type::TypeClass)ZigClangType_Vector == clang::Type::Vector, "");
 static_assert((clang::Type::TypeClass)ZigClangType_ExtVector == clang::Type::ExtVector, "");
 
@@ -429,6 +431,7 @@ void ZigClang_detect_enum_StmtClass(clang::Stmt::StmtClass x) {
         case clang::Stmt::OMPDistributeSimdDirectiveClass:
         case clang::Stmt::OMPForDirectiveClass:
         case clang::Stmt::OMPForSimdDirectiveClass:
+        case clang::Stmt::OMPGenericLoopDirectiveClass:
         case clang::Stmt::OMPMasterTaskLoopDirectiveClass:
         case clang::Stmt::OMPMasterTaskLoopSimdDirectiveClass:
         case clang::Stmt::OMPParallelForDirectiveClass:
@@ -452,6 +455,7 @@ void ZigClang_detect_enum_StmtClass(clang::Stmt::StmtClass x) {
         case clang::Stmt::OMPUnrollDirectiveClass:
         case clang::Stmt::OMPMaskedDirectiveClass:
         case clang::Stmt::OMPMasterDirectiveClass:
+        case clang::Stmt::OMPMetaDirectiveClass:
         case clang::Stmt::OMPOrderedDirectiveClass:
         case clang::Stmt::OMPParallelDirectiveClass:
         case clang::Stmt::OMPParallelMasterDirectiveClass:
@@ -654,6 +658,7 @@ static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPDistributeParallelForSimdD
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPDistributeSimdDirectiveClass == clang::Stmt::OMPDistributeSimdDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPForDirectiveClass == clang::Stmt::OMPForDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPForSimdDirectiveClass == clang::Stmt::OMPForSimdDirectiveClass, "");
+static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPGenericLoopDirectiveClass == clang::Stmt::OMPGenericLoopDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPMasterTaskLoopDirectiveClass == clang::Stmt::OMPMasterTaskLoopDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPMasterTaskLoopSimdDirectiveClass == clang::Stmt::OMPMasterTaskLoopSimdDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPParallelForDirectiveClass == clang::Stmt::OMPParallelForDirectiveClass, "");
@@ -677,6 +682,7 @@ static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPTileDirectiveClass == clan
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPUnrollDirectiveClass == clang::Stmt::OMPUnrollDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPMaskedDirectiveClass == clang::Stmt::OMPMaskedDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPMasterDirectiveClass == clang::Stmt::OMPMasterDirectiveClass, "");
+static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPMetaDirectiveClass == clang::Stmt::OMPMetaDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPOrderedDirectiveClass == clang::Stmt::OMPOrderedDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPParallelDirectiveClass == clang::Stmt::OMPParallelDirectiveClass, "");
 static_assert((clang::Stmt::StmtClass)ZigClangStmt_OMPParallelMasterDirectiveClass == clang::Stmt::OMPParallelMasterDirectiveClass, "");
@@ -1269,6 +1275,7 @@ void ZigClang_detect_enum_BuiltinTypeKind(clang::BuiltinType::Kind x) {
         case clang::BuiltinType::Float16:
         case clang::BuiltinType::BFloat16:
         case clang::BuiltinType::Float128:
+        case clang::BuiltinType::Ibm128:
         case clang::BuiltinType::NullPtr:
         case clang::BuiltinType::ObjCId:
         case clang::BuiltinType::ObjCClass:
@@ -1510,6 +1517,7 @@ static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeLongDouble == clang::
 static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeFloat16 == clang::BuiltinType::Float16, "");
 static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeBFloat16 == clang::BuiltinType::BFloat16, "");
 static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeFloat128 == clang::BuiltinType::Float128, "");
+static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeIbm128 == clang::BuiltinType::Ibm128, "");
 static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeNullPtr == clang::BuiltinType::NullPtr, "");
 static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeObjCId == clang::BuiltinType::ObjCId, "");
 static_assert((clang::BuiltinType::Kind)ZigClangBuiltinTypeObjCClass == clang::BuiltinType::ObjCClass, "");
@@ -3424,3 +3432,31 @@ const struct ZigClangAPSInt *ZigClangEnumConstantDecl_getInitVal(const struct Zi
     const llvm::APSInt *result = &casted->getInitVal();
     return reinterpret_cast<const ZigClangAPSInt *>(result);
 }
+
+// Get a pointer to a static variable in libc++ from LLVM and make sure that
+// it matches our own.
+//
+// This check is needed because if static/dynamic linking is mixed incorrectly,
+// it's possible for Clang and LLVM to end up with duplicate "copies" of libc++.
+//
+// This is not benign: Static variables are not shared, so equality comparisons
+// that depend on pointers to static variables will fail. One such failure is
+// std::generic_category(), which causes POSIX error codes to compare as unequal
+// when passed between LLVM and Clang.
+//
+// See also: https://github.com/ziglang/zig/issues/11168
+bool ZigClangIsLLVMUsingSeparateLibcxx() {
+
+    // Temporarily create an InMemoryFileSystem, so that we can perform a file 
+    // lookup that is guaranteed to fail.
+    auto FS = new llvm::vfs::InMemoryFileSystem(true);
+    auto StatusOrErr = FS->status("foo.txt");
+    delete FS;
+
+    // This should return a POSIX (generic_category) error code, but if LLVM has
+    // its own copy of libc++ this will actually be a separate category instance.
+    assert(!StatusOrErr);
+    auto EC = StatusOrErr.getError();
+    return EC.category() != std::generic_category();
+}
+

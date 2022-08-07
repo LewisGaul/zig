@@ -306,14 +306,14 @@ pub fn getEnvMap(allocator: Allocator) !EnvMap {
         for (environ) |env| {
             const pair = mem.sliceTo(env, 0);
             var parts = mem.split(u8, pair, "=");
-            const key = parts.next().?;
+            const key = parts.first();
             const value = parts.next().?;
             try result.put(key, value);
         }
         return result;
     } else if (builtin.link_libc) {
         var ptr = std.c.environ;
-        while (ptr.*) |line| : (ptr += 1) {
+        while (ptr[0]) |line| : (ptr += 1) {
             var line_i: usize = 0;
             while (line[line_i] != 0 and line[line_i] != '=') : (line_i += 1) {}
             const key = line[0..line_i];

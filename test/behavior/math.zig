@@ -161,10 +161,11 @@ test "@ctz vectors" {
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
 
-    if (builtin.zig_backend == .stage2_llvm and builtin.cpu.arch == .aarch64) {
-        // TODO this is tripping an LLVM assert:
-        // zig: /home/andy/Downloads/llvm-project-13/llvm/lib/CodeGen/GlobalISel/LegalizerInfo.cpp:198: llvm::LegalizeActionStep llvm::LegalizeRuleSet::apply(const llvm::LegalityQuery&) const: Assertion `mutationIsSane(Rule, Query, Mutation) && "legality mutation invalid for match"' failed.
-        // I need to report a zig issue and an llvm issue
+    if ((builtin.zig_backend == .stage1 or builtin.zig_backend == .stage2_llvm) and
+        builtin.cpu.arch == .aarch64)
+    {
+        // This regressed with LLVM 14:
+        // https://github.com/ziglang/zig/issues/12013
         return error.SkipZigTest;
     }
 
@@ -376,6 +377,7 @@ fn testBinaryNot(x: u16) !void {
 }
 
 test "division" {
+    if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_wasm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
@@ -652,7 +654,6 @@ test "@addWithOverflow" {
 
 test "small int addition" {
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
 
     var x: u2 = 0;
     try expect(x == 0);
@@ -1136,8 +1137,6 @@ fn testShrExact(x: u8) !void {
 }
 
 test "shift left/right on u0 operand" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
-
     const S = struct {
         fn doTheTest() !void {
             var x: u0 = 0;

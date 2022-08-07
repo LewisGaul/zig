@@ -9,4 +9,5 @@ inline fn fibonacci(n: usize) usize {
 }
 
 // run
+// target=x86_64-linux,arm-linux,wasm32-wasi
 //

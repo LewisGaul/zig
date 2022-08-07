@@ -26,6 +26,27 @@ pub const runtime_safety = switch (builtin.mode) {
     .ReleaseFast, .ReleaseSmall => false,
 };
 
+pub const sys_can_stack_trace = switch (builtin.cpu.arch) {
+    // Observed to go into an infinite loop.
+    // TODO: Make this work.
+    .mips,
+    .mipsel,
+    => false,
+
+    // `@returnAddress()` in LLVM 10 gives
+    // "Non-Emscripten WebAssembly hasn't implemented __builtin_return_address".
+    .wasm32,
+    .wasm64,
+    => builtin.os.tag == .emscripten,
+
+    // `@returnAddress()` is unsupported in LLVM 13.
+    .bpfel,
+    .bpfeb,
+    => false,
+
+    else => true,
+};
+
 pub const LineInfo = struct {
     line: u64,
     column: u64,
@@ -180,11 +201,10 @@ pub fn dumpStackTraceFromBase(bp: usize, ip: usize) void {
 pub fn captureStackTrace(first_address: ?usize, stack_trace: *std.builtin.StackTrace) void {
     if (native_os == .windows) {
         const addrs = stack_trace.instruction_addresses;
-        const u32_addrs_len = @intCast(u32, addrs.len);
         const first_addr = first_address orelse {
             stack_trace.index = windows.ntdll.RtlCaptureStackBackTrace(
                 0,
-                u32_addrs_len,
+                @intCast(u32, addrs.len),
                 @ptrCast(**anyopaque, addrs.ptr),
                 null,
             );
@@ -192,7 +212,7 @@ pub fn captureStackTrace(first_address: ?usize, stack_trace: *std.builtin.StackT
         };
         var addr_buf_stack: [32]usize = undefined;
         const addr_buf = if (addr_buf_stack.len > addrs.len) addr_buf_stack[0..] else addrs;
-        const n = windows.ntdll.RtlCaptureStackBackTrace(0, u32_addrs_len, @ptrCast(**anyopaque, addr_buf.ptr), null);
+        const n = windows.ntdll.RtlCaptureStackBackTrace(0, @intCast(u32, addr_buf.len), @ptrCast(**anyopaque, addr_buf.ptr), null);
         const first_index = for (addr_buf[0..n]) |addr, i| {
             if (addr == first_addr) {
                 break i;
@@ -201,7 +221,8 @@ pub fn captureStackTrace(first_address: ?usize, stack_trace: *std.builtin.StackT
             stack_trace.index = 0;
             return;
         };
-        const slice = addr_buf[first_index..n];
+        const end_index = math.min(first_index + addrs.len, n);
+        const slice = addr_buf[first_index..end_index];
         // We use a for loop here because slice and addrs may alias.
         for (slice) |addr, i| {
             addrs[i] = addr;
@@ -853,9 +874,9 @@ fn readCoffDebugInfo(allocator: mem.Allocator, coff_file: File) !ModuleDebugInfo
     }
 }
 
-fn chopSlice(ptr: []const u8, offset: u64, size: u64) ![]const u8 {
-    const start = try math.cast(usize, offset);
-    const end = start + try math.cast(usize, size);
+fn chopSlice(ptr: []const u8, offset: u64, size: u64) error{Overflow}![]const u8 {
+    const start = math.cast(usize, offset) orelse return error.Overflow;
+    const end = start + (math.cast(usize, size) orelse return error.Overflow);
     return ptr[start..end];
 }
 
@@ -880,7 +901,7 @@ pub fn readElfDebugInfo(allocator: mem.Allocator, elf_file: File) !ModuleDebugIn
         const str_section_off = shoff + @as(u64, hdr.e_shentsize) * @as(u64, hdr.e_shstrndx);
         const str_shdr = @ptrCast(
             *const elf.Shdr,
-            @alignCast(@alignOf(elf.Shdr), &mapped_mem[try math.cast(usize, str_section_off)]),
+            @alignCast(@alignOf(elf.Shdr), &mapped_mem[math.cast(usize, str_section_off) orelse return error.Overflow]),
         );
         const header_strings = mapped_mem[str_shdr.sh_offset .. str_shdr.sh_offset + str_shdr.sh_size];
         const shdrs = @ptrCast(
@@ -947,24 +968,20 @@ fn readMachODebugInfo(allocator: mem.Allocator, macho_file: File) !ModuleDebugIn
     if (hdr.magic != macho.MH_MAGIC_64)
         return error.InvalidDebugInfo;
 
-    const hdr_base = @ptrCast([*]const u8, hdr);
-    var ptr = hdr_base + @sizeOf(macho.mach_header_64);
-    var ncmd: u32 = hdr.ncmds;
-    const symtab = while (ncmd != 0) : (ncmd -= 1) {
-        const lc = @ptrCast(*const std.macho.load_command, ptr);
-        switch (lc.cmd) {
-            .SYMTAB => break @ptrCast(*const std.macho.symtab_command, ptr),
-            else => {},
-        }
-        ptr = @alignCast(@alignOf(std.macho.load_command), ptr + lc.cmdsize);
-    } else {
-        return error.MissingDebugInfo;
+    var it = macho.LoadCommandIterator{
+        .ncmds = hdr.ncmds,
+        .buffer = mapped_mem[@sizeOf(macho.mach_header_64)..][0..hdr.sizeofcmds],
     };
+    const symtab = while (it.next()) |cmd| switch (cmd.cmd()) {
+        .SYMTAB => break cmd.cast(macho.symtab_command).?,
+        else => {},
+    } else return error.MissingDebugInfo;
+
     const syms = @ptrCast(
         [*]const macho.nlist_64,
-        @alignCast(@alignOf(macho.nlist_64), hdr_base + symtab.symoff),
+        @alignCast(@alignOf(macho.nlist_64), &mapped_mem[symtab.symoff]),
     )[0..symtab.nsyms];
-    const strings = @ptrCast([*]const u8, hdr_base + symtab.stroff)[0 .. symtab.strsize - 1 :0];
+    const strings = mapped_mem[symtab.stroff..][0 .. symtab.strsize - 1 :0];
 
     const symbols_buf = try allocator.alloc(MachoSymbol, syms.len);
 
@@ -1119,7 +1136,7 @@ fn mapWholeFile(file: File) ![]align(mem.page_size) const u8 {
     nosuspend {
         defer file.close();
 
-        const file_len = try math.cast(usize, try file.getEndPos());
+        const file_len = math.cast(usize, try file.getEndPos()) orelse math.maxInt(usize);
         const mapped_mem = try os.mmap(
             null,
             file_len,
@@ -1179,48 +1196,46 @@ pub const DebugInfo = struct {
             if (address < base_address) continue;
 
             const header = std.c._dyld_get_image_header(i) orelse continue;
-            // The array of load commands is right after the header
-            var cmd_ptr = @intToPtr([*]u8, @ptrToInt(header) + @sizeOf(macho.mach_header_64));
 
-            var cmds = header.ncmds;
-            while (cmds != 0) : (cmds -= 1) {
-                const lc = @ptrCast(
-                    *macho.load_command,
-                    @alignCast(@alignOf(macho.load_command), cmd_ptr),
-                );
-                cmd_ptr += lc.cmdsize;
-                if (lc.cmd != .SEGMENT_64) continue;
+            var it = macho.LoadCommandIterator{
+                .ncmds = header.ncmds,
+                .buffer = @alignCast(@alignOf(u64), @intToPtr(
+                    [*]u8,
+                    @ptrToInt(header) + @sizeOf(macho.mach_header_64),
+                ))[0..header.sizeofcmds],
+            };
+            while (it.next()) |cmd| switch (cmd.cmd()) {
+                .SEGMENT_64 => {
+                    const segment_cmd = cmd.cast(macho.segment_command_64).?;
+                    const rebased_address = address - base_address;
+                    const seg_start = segment_cmd.vmaddr;
+                    const seg_end = seg_start + segment_cmd.vmsize;
 
-                const segment_cmd = @ptrCast(
-                    *const std.macho.segment_command_64,
-                    @alignCast(@alignOf(std.macho.segment_command_64), lc),
-                );
+                    if (rebased_address >= seg_start and rebased_address < seg_end) {
+                        if (self.address_map.get(base_address)) |obj_di| {
+                            return obj_di;
+                        }
 
-                const rebased_address = address - base_address;
-                const seg_start = segment_cmd.vmaddr;
-                const seg_end = seg_start + segment_cmd.vmsize;
+                        const obj_di = try self.allocator.create(ModuleDebugInfo);
+                        errdefer self.allocator.destroy(obj_di);
 
-                if (rebased_address >= seg_start and rebased_address < seg_end) {
-                    if (self.address_map.get(base_address)) |obj_di| {
+                        const macho_path = mem.sliceTo(std.c._dyld_get_image_name(i), 0);
+                        const macho_file = fs.cwd().openFile(macho_path, .{
+                            .intended_io_mode = .blocking,
+                        }) catch |err| switch (err) {
+                            error.FileNotFound => return error.MissingDebugInfo,
+                            else => return err,
+                        };
+                        obj_di.* = try readMachODebugInfo(self.allocator, macho_file);
+                        obj_di.base_address = base_address;
+
+                        try self.address_map.putNoClobber(base_address, obj_di);
+
                         return obj_di;
                     }
-
-                    const obj_di = try self.allocator.create(ModuleDebugInfo);
-                    errdefer self.allocator.destroy(obj_di);
-
-                    const macho_path = mem.sliceTo(std.c._dyld_get_image_name(i), 0);
-                    const macho_file = fs.cwd().openFile(macho_path, .{ .intended_io_mode = .blocking }) catch |err| switch (err) {
-                        error.FileNotFound => return error.MissingDebugInfo,
-                        else => return err,
-                    };
-                    obj_di.* = try readMachODebugInfo(self.allocator, macho_file);
-                    obj_di.base_address = base_address;
-
-                    try self.address_map.putNoClobber(base_address, obj_di);
-
-                    return obj_di;
-                }
-            }
+                },
+                else => {},
+            };
         }
 
         return error.MissingDebugInfo;
@@ -1248,7 +1263,7 @@ pub const DebugInfo = struct {
         if (windows.kernel32.K32EnumProcessModules(
             process_handle,
             modules.ptr,
-            try math.cast(windows.DWORD, modules.len * @sizeOf(windows.HMODULE)),
+            math.cast(windows.DWORD, modules.len * @sizeOf(windows.HMODULE)) orelse return error.Overflow,
             &bytes_needed,
         ) == 0)
             return error.MissingDebugInfo;
@@ -1424,44 +1439,31 @@ pub const ModuleDebugInfo = switch (native_os) {
             if (hdr.magic != std.macho.MH_MAGIC_64)
                 return error.InvalidDebugInfo;
 
-            const hdr_base = @ptrCast([*]const u8, hdr);
-            var ptr = hdr_base + @sizeOf(macho.mach_header_64);
-            var segptr = ptr;
-            var ncmd: u32 = hdr.ncmds;
-            var segcmd: ?*const macho.segment_command_64 = null;
-            var symtabcmd: ?*const macho.symtab_command = null;
-
-            while (ncmd != 0) : (ncmd -= 1) {
-                const lc = @ptrCast(*const std.macho.load_command, ptr);
-                switch (lc.cmd) {
-                    .SEGMENT_64 => {
-                        segcmd = @ptrCast(
-                            *const std.macho.segment_command_64,
-                            @alignCast(@alignOf(std.macho.segment_command_64), ptr),
-                        );
-                        segptr = ptr;
-                    },
-                    .SYMTAB => {
-                        symtabcmd = @ptrCast(
-                            *const std.macho.symtab_command,
-                            @alignCast(@alignOf(std.macho.symtab_command), ptr),
-                        );
-                    },
-                    else => {},
-                }
-                ptr = @alignCast(@alignOf(std.macho.load_command), ptr + lc.cmdsize);
-            }
+            var segcmd: ?macho.LoadCommandIterator.LoadCommand = null;
+            var symtabcmd: ?macho.symtab_command = null;
+            var it = macho.LoadCommandIterator{
+                .ncmds = hdr.ncmds,
+                .buffer = mapped_mem[@sizeOf(macho.mach_header_64)..][0..hdr.sizeofcmds],
+            };
+            while (it.next()) |cmd| switch (cmd.cmd()) {
+                .SEGMENT_64 => segcmd = cmd,
+                .SYMTAB => symtabcmd = cmd.cast(macho.symtab_command).?,
+                else => {},
+            };
 
             if (segcmd == null or symtabcmd == null) return error.MissingDebugInfo;
 
             // Parse symbols
             const strtab = @ptrCast(
                 [*]const u8,
-                hdr_base + symtabcmd.?.stroff,
+                &mapped_mem[symtabcmd.?.stroff],
             )[0 .. symtabcmd.?.strsize - 1 :0];
             const symtab = @ptrCast(
                 [*]const macho.nlist_64,
-                @alignCast(@alignOf(macho.nlist_64), hdr_base + symtabcmd.?.symoff),
+                @alignCast(
+                    @alignOf(macho.nlist_64),
+                    &mapped_mem[symtabcmd.?.symoff],
+                ),
             )[0..symtabcmd.?.nsyms];
 
             // TODO handle tentative (common) symbols
@@ -1475,25 +1477,15 @@ pub const ModuleDebugInfo = switch (native_os) {
                 addr_table.putAssumeCapacityNoClobber(sym_name, sym.n_value);
             }
 
-            var opt_debug_line: ?*const macho.section_64 = null;
-            var opt_debug_info: ?*const macho.section_64 = null;
-            var opt_debug_abbrev: ?*const macho.section_64 = null;
-            var opt_debug_str: ?*const macho.section_64 = null;
-            var opt_debug_line_str: ?*const macho.section_64 = null;
-            var opt_debug_ranges: ?*const macho.section_64 = null;
+            var opt_debug_line: ?macho.section_64 = null;
+            var opt_debug_info: ?macho.section_64 = null;
+            var opt_debug_abbrev: ?macho.section_64 = null;
+            var opt_debug_str: ?macho.section_64 = null;
+            var opt_debug_line_str: ?macho.section_64 = null;
+            var opt_debug_ranges: ?macho.section_64 = null;
 
-            const sections = @ptrCast(
-                [*]const macho.section_64,
-                @alignCast(@alignOf(macho.section_64), segptr + @sizeOf(std.macho.segment_command_64)),
-            )[0..segcmd.?.nsects];
-            for (sections) |*sect| {
-                // The section name may not exceed 16 chars and a trailing null may
-                // not be present
-                const name = if (mem.indexOfScalar(u8, sect.sectname[0..], 0)) |last|
-                    sect.sectname[0..last]
-                else
-                    sect.sectname[0..];
-
+            for (segcmd.?.getSections()) |sect| {
+                const name = sect.sectName();
                 if (mem.eql(u8, name, "__debug_line")) {
                     opt_debug_line = sect;
                 } else if (mem.eql(u8, name, "__debug_info")) {
@@ -1763,6 +1755,7 @@ pub fn updateSegfaultHandler(act: ?*const os.Sigaction) error{OperationNotSuppor
     try os.sigaction(os.SIG.SEGV, act, null);
     try os.sigaction(os.SIG.ILL, act, null);
     try os.sigaction(os.SIG.BUS, act, null);
+    try os.sigaction(os.SIG.FPE, act, null);
 }
 
 /// Attaches a global SIGSEGV handler which calls @panic("segmentation fault");
@@ -1798,7 +1791,7 @@ fn resetSegfaultHandler() void {
         .mask = os.empty_sigset,
         .flags = 0,
     };
-    // do nothing if an error happens to avoid a double-panic
+    // To avoid a double-panic, do nothing if an error happens here.
     updateSegfaultHandler(&act) catch {};
 }
 
@@ -1824,6 +1817,7 @@ fn handleSegfaultPosix(sig: i32, info: *const os.siginfo_t, ctx_ptr: ?*const any
             os.SIG.SEGV => stderr.print("Segmentation fault at address 0x{x}\n", .{addr}),
             os.SIG.ILL => stderr.print("Illegal instruction at address 0x{x}\n", .{addr}),
             os.SIG.BUS => stderr.print("Bus error at address 0x{x}\n", .{addr}),
+            os.SIG.FPE => stderr.print("Arithmetic exception at address 0x{x}\n", .{addr}),
             else => unreachable,
         } catch os.abort();
     }
@@ -1942,4 +1936,103 @@ test "#4353: std.debug should manage resources correctly" {
 
 noinline fn showMyTrace() usize {
     return @returnAddress();
+}
+
+/// This API helps you track where a value originated and where it was mutated,
+/// or any other points of interest.
+/// In debug mode, it adds a small size penalty (104 bytes on 64-bit architectures)
+/// to the aggregate that you add it to.
+/// In release mode, it is size 0 and all methods are no-ops.
+/// This is a pre-made type with default settings.
+/// For more advanced usage, see `ConfigurableTrace`.
+pub const Trace = ConfigurableTrace(2, 4, builtin.mode == .Debug);
+
+pub fn ConfigurableTrace(comptime size: usize, comptime stack_frame_count: usize, comptime enabled: bool) type {
+    return struct {
+        addrs: [actual_size][stack_frame_count]usize = undefined,
+        notes: [actual_size][]const u8 = undefined,
+        index: Index = 0,
+
+        const actual_size = if (enabled) size else 0;
+        const Index = if (enabled) usize else u0;
+
+        pub const enabled = enabled;
+
+        pub const add = if (enabled) addNoInline else addNoOp;
+
+        pub noinline fn addNoInline(t: *@This(), note: []const u8) void {
+            comptime assert(enabled);
+            return addAddr(t, @returnAddress(), note);
+        }
+
+        pub inline fn addNoOp(t: *@This(), note: []const u8) void {
+            _ = t;
+            _ = note;
+            comptime assert(!enabled);
+        }
+
+        pub fn addAddr(t: *@This(), addr: usize, note: []const u8) void {
+            if (!enabled) return;
+
+            if (t.index < size) {
+                t.notes[t.index] = note;
+                t.addrs[t.index] = [1]usize{0} ** stack_frame_count;
+                var stack_trace: std.builtin.StackTrace = .{
+                    .index = 0,
+                    .instruction_addresses = &t.addrs[t.index],
+                };
+                captureStackTrace(addr, &stack_trace);
+            }
+            // Keep counting even if the end is reached so that the
+            // user can find out how much more size they need.
+            t.index += 1;
+        }
+
+        pub fn dump(t: @This()) void {
+            if (!enabled) return;
+
+            const tty_config = detectTTYConfig();
+            const stderr = io.getStdErr().writer();
+            const end = @minimum(t.index, size);
+            const debug_info = getSelfDebugInfo() catch |err| {
+                stderr.print(
+                    "Unable to dump stack trace: Unable to open debug info: {s}\n",
+                    .{@errorName(err)},
+                ) catch return;
+                return;
+            };
+            for (t.addrs[0..end]) |frames_array, i| {
+                stderr.print("{s}:\n", .{t.notes[i]}) catch return;
+                var frames_array_mutable = frames_array;
+                const frames = mem.sliceTo(frames_array_mutable[0..], 0);
+                const stack_trace: std.builtin.StackTrace = .{
+                    .index = frames.len,
+                    .instruction_addresses = frames,
+                };
+                writeStackTrace(stack_trace, stderr, getDebugInfoAllocator(), debug_info, tty_config) catch continue;
+            }
+            if (t.index > end) {
+                stderr.print("{d} more traces not shown; consider increasing trace size\n", .{
+                    t.index - end,
+                }) catch return;
+            }
+        }
+
+        pub fn format(
+            t: Trace,
+            comptime fmt: []const u8,
+            options: std.fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
+            _ = fmt;
+            _ = options;
+            if (enabled) {
+                try writer.writeAll("\n");
+                t.dump();
+                try writer.writeAll("\n");
+            } else {
+                return writer.writeAll("(value tracing disabled)");
+            }
+        }
+    };
 }

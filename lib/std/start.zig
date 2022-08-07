@@ -108,7 +108,7 @@ fn callMain2() noreturn {
     exit2(0);
 }
 
-fn wasiMain2() noreturn {
+fn wasiMain2() callconv(.C) noreturn {
     switch (@typeInfo(@typeInfo(@TypeOf(root.main)).Fn.return_type.?)) {
         .Void => {
             root.main();
@@ -361,7 +361,6 @@ fn wWinMainCRTStartup() callconv(std.os.windows.WINAPI) noreturn {
     std.os.windows.kernel32.ExitProcess(@bitCast(std.os.windows.UINT, result));
 }
 
-// TODO https://github.com/ziglang/zig/issues/265
 fn posixCallMainAndExit() noreturn {
     @setAlignStack(16);
 
@@ -455,10 +454,6 @@ fn expandStackSize(phdrs: []elf.Phdr) void {
 fn callMainWithArgs(argc: usize, argv: [*][*:0]u8, envp: [][*:0]u8) u8 {
     std.os.argv = argv[0..argc];
     std.os.environ = envp;
-
-    if (builtin.zig_backend == .stage2_llvm) {
-        return @call(.{ .modifier = .always_inline }, callMain, .{});
-    }
 
     std.debug.maybeEnableSegfaultHandler();
 

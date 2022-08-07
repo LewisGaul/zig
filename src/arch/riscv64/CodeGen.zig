@@ -516,6 +516,7 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .ceil,
             .round,
             .trunc_float,
+            .neg,
             => try self.airUnaryMath(inst),
 
             .add_with_overflow => try self.airAddWithOverflow(inst),
@@ -604,6 +605,9 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .prefetch        => try self.airPrefetch(inst),
             .mul_add         => try self.airMulAdd(inst),
 
+            .@"try"          => @panic("TODO"),
+            .try_ptr         => @panic("TODO"),
+
             .dbg_var_ptr,
             .dbg_var_val,
             => try self.airDbgVar(inst),
@@ -664,6 +668,32 @@ fn genBody(self: *Self, body: []const Air.Inst.Index) InnerError!void {
             .wrap_optional         => try self.airWrapOptional(inst),
             .wrap_errunion_payload => try self.airWrapErrUnionPayload(inst),
             .wrap_errunion_err     => try self.airWrapErrUnionErr(inst),
+
+            .add_optimized,
+            .addwrap_optimized,
+            .sub_optimized,
+            .subwrap_optimized,
+            .mul_optimized,
+            .mulwrap_optimized,
+            .div_float_optimized,
+            .div_trunc_optimized,
+            .div_floor_optimized,
+            .div_exact_optimized,
+            .rem_optimized,
+            .mod_optimized,
+            .neg_optimized,
+            .cmp_lt_optimized,
+            .cmp_lte_optimized,
+            .cmp_eq_optimized,
+            .cmp_gte_optimized,
+            .cmp_gt_optimized,
+            .cmp_neq_optimized,
+            .cmp_vector_optimized,
+            .reduce_optimized,
+            .float_to_int_optimized,
+            => return self.fail("TODO implement optimized float mode", .{}),
+
+            .is_named_enum_value => return self.fail("TODO implement is_named_enum_value", .{}),
 
             .wasm_memory_size => unreachable,
             .wasm_memory_grow => unreachable,
@@ -754,7 +784,7 @@ fn addDbgInfoTypeReloc(self: *Self, ty: Type) !void {
                 .macho => unreachable,
                 else => unreachable,
             };
-            try dw.addTypeReloc(atom, ty, @intCast(u32, index), null);
+            try dw.addTypeRelocGlobal(atom, ty, @intCast(u32, index));
         },
         .plan9 => {},
         .none => {},
@@ -779,7 +809,7 @@ fn allocMem(self: *Self, inst: Air.Inst.Index, abi_size: u32, abi_align: u32) !u
 /// Use a pointer instruction as the basis for allocating stack memory.
 fn allocMemPtr(self: *Self, inst: Air.Inst.Index) !u32 {
     const elem_ty = self.air.typeOfIndex(inst).elemType();
-    const abi_size = math.cast(u32, elem_ty.abiSize(self.target.*)) catch {
+    const abi_size = math.cast(u32, elem_ty.abiSize(self.target.*)) orelse {
         const mod = self.bin_file.options.module.?;
         return self.fail("type '{}' too big to fit into stack frame", .{elem_ty.fmt(mod)});
     };
@@ -790,7 +820,7 @@ fn allocMemPtr(self: *Self, inst: Air.Inst.Index) !u32 {
 
 fn allocRegOrMem(self: *Self, inst: Air.Inst.Index, reg_ok: bool) !MCValue {
     const elem_ty = self.air.typeOfIndex(inst);
-    const abi_size = math.cast(u32, elem_ty.abiSize(self.target.*)) catch {
+    const abi_size = math.cast(u32, elem_ty.abiSize(self.target.*)) orelse {
         const mod = self.bin_file.options.module.?;
         return self.fail("type '{}' too big to fit into stack frame", .{elem_ty.fmt(mod)});
     };
@@ -1591,7 +1621,7 @@ fn airFieldParentPtr(self: *Self, inst: Air.Inst.Index) !void {
 
 fn genArgDbgInfo(self: *Self, inst: Air.Inst.Index, mcv: MCValue, arg_index: u32) !void {
     const ty = self.air.instructions.items(.data)[inst].ty;
-    const name = self.mod_fn.getParamName(arg_index);
+    const name = self.mod_fn.getParamName(self.bin_file.options.module.?, arg_index);
     const name_with_null = name.ptr[0 .. name.len + 1];
 
     switch (mcv) {
@@ -2559,7 +2589,7 @@ fn lowerDeclRef(self: *Self, tv: TypedValue, decl_index: Module.Decl.Index) Inne
     } else if (self.bin_file.cast(link.File.MachO)) |_| {
         // TODO I'm hacking my way through here by repurposing .memory for storing
         // index to the GOT target symbol index.
-        return MCValue{ .memory = decl.link.macho.local_sym_index };
+        return MCValue{ .memory = decl.link.macho.sym_index };
     } else if (self.bin_file.cast(link.File.Coff)) |coff_file| {
         const got_addr = coff_file.offset_table_virtual_address + decl.link.coff.offset_table_index * ptr_bytes;
         return MCValue{ .memory = got_addr };

@@ -1820,7 +1820,7 @@ fn renderArrayInit(
             } else {
                 var by_line = std.mem.split(u8, expr_text, "\n");
                 var last_line_was_empty = false;
-                try ais.writer().writeAll(by_line.next().?);
+                try ais.writer().writeAll(by_line.first());
                 while (by_line.next()) |line| {
                     if (std.mem.startsWith(u8, line, "//") and last_line_was_empty) {
                         try ais.insertNewline();
@@ -2482,7 +2482,17 @@ fn renderDocComments(ais: *Ais, tree: Ast, end_token: Ast.TokenIndex) Error!void
     }
     const first_tok = tok;
     if (first_tok == end_token) return;
-    try renderExtraNewlineToken(ais, tree, first_tok);
+
+    if (first_tok != 0) {
+        const prev_token_tag = token_tags[first_tok - 1];
+
+        // Prevent accidental use of `renderDocComments` for a function argument doc comment
+        assert(prev_token_tag != .l_paren);
+
+        if (prev_token_tag != .l_brace) {
+            try renderExtraNewlineToken(ais, tree, first_tok);
+        }
+    }
 
     while (token_tags[tok] == .doc_comment) : (tok += 1) {
         try renderToken(ais, tree, tok, .newline);

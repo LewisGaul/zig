@@ -5,7 +5,6 @@ const expectError = std.testing.expectError;
 const expectEqual = std.testing.expectEqual;
 
 test "switch with numbers" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     try testSwitchWithNumbers(13);
@@ -21,7 +20,6 @@ fn testSwitchWithNumbers(x: u32) !void {
 }
 
 test "switch with all ranges" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     try expect(testSwitchWithAllRanges(50, 3) == 1);
@@ -55,7 +53,6 @@ test "implicit comptime switch" {
 }
 
 test "switch on enum" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     const fruit = Fruit.Orange;
@@ -75,7 +72,6 @@ fn nonConstSwitchOnEnum(fruit: Fruit) void {
 }
 
 test "switch statement" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     try nonConstSwitch(SwitchStatementFoo.C);
@@ -93,7 +89,6 @@ const SwitchStatementFoo = enum { A, B, C, D };
 
 test "switch with multiple expressions" {
     if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     const x = switch (returnsFive()) {
@@ -122,7 +117,6 @@ fn trueIfBoolFalseOtherwise(comptime T: type) bool {
 }
 
 test "switching on booleans" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     try testSwitchOnBools();
@@ -176,7 +170,6 @@ test "undefined.u0" {
 }
 
 test "switch with disjoint range" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     var q: u8 = 0;
@@ -221,7 +214,6 @@ fn poll() void {
 }
 
 test "switch on global mutable var isn't constant-folded" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     while (state < 2) {
@@ -281,7 +273,6 @@ fn testSwitchEnumPtrCapture() !void {
 
 test "switch handles all cases of number" {
     if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     try testSwitchHandleAllCases();
@@ -373,7 +364,6 @@ test "anon enum literal used in switch on union enum" {
 }
 
 test "switch all prongs unreachable" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     try testAllProngsUnreachable();
@@ -397,7 +387,6 @@ fn switchWithUnreachable(x: i32) i32 {
 }
 
 test "capture value of switch with all unreachable prongs" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     const x = return_a_number() catch |err| switch (err) {
@@ -412,7 +401,6 @@ fn return_a_number() anyerror!i32 {
 
 test "switch on integer with else capturing expr" {
     if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     const S = struct {
@@ -543,6 +531,7 @@ test "switch with null and T peer types and inferred result location type" {
 test "switch prongs with cases with identical payload types" {
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
+    if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // TODO
 
     const Union = union(enum) {
         A: usize,
@@ -587,7 +576,6 @@ test "switch on pointer type" {
     if (builtin.zig_backend == .stage2_c) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_x86_64) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
 
     const S = struct {
         const X = struct {
@@ -658,7 +646,6 @@ test "switch capture copies its payload" {
 }
 
 test "capture of integer forwards the switch condition directly" {
-    if (builtin.zig_backend == .stage2_arm) return error.SkipZigTest; // TODO
     if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
 
     const S = struct {
@@ -677,4 +664,21 @@ test "capture of integer forwards the switch condition directly" {
     try S.foo(100);
     comptime try S.foo(42);
     comptime try S.foo(100);
+}
+
+test "enum value without tag name used as switch item" {
+    if (builtin.zig_backend == .stage2_aarch64) return error.SkipZigTest; // TODO
+
+    const E = enum(u32) {
+        a = 1,
+        b = 2,
+        _,
+    };
+    var e: E = @intToEnum(E, 0);
+    switch (e) {
+        @intToEnum(E, 0) => {},
+        .a => return error.TestFailed,
+        .b => return error.TestFailed,
+        _ => return error.TestFailed,
+    }
 }

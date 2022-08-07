@@ -38,11 +38,15 @@ pub const Inst = struct {
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         add,
+        /// Same as `add` with optimized float mode.
+        add_optimized,
         /// Integer addition. Wrapping is defined to be twos complement wrapping.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         addwrap,
+        /// Same as `addwrap` with optimized float mode.
+        addwrap_optimized,
         /// Saturating integer addition.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
@@ -53,11 +57,15 @@ pub const Inst = struct {
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         sub,
+        /// Same as `sub` with optimized float mode.
+        sub_optimized,
         /// Integer subtraction. Wrapping is defined to be twos complement wrapping.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         subwrap,
+        /// Same as `sub` with optimized float mode.
+        subwrap_optimized,
         /// Saturating integer subtraction.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
@@ -68,11 +76,15 @@ pub const Inst = struct {
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         mul,
+        /// Same as `mul` with optimized float mode.
+        mul_optimized,
         /// Integer multiplication. Wrapping is defined to be twos complement wrapping.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         mulwrap,
+        /// Same as `mulwrap` with optimized float mode.
+        mulwrap_optimized,
         /// Saturating integer multiplication.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
@@ -83,32 +95,45 @@ pub const Inst = struct {
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         div_float,
+        /// Same as `div_float` with optimized float mode.
+        div_float_optimized,
         /// Truncating integer or float division. For integers, wrapping is undefined behavior.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         div_trunc,
+        /// Same as `div_trunc` with optimized float mode.
+        div_trunc_optimized,
         /// Flooring integer or float division. For integers, wrapping is undefined behavior.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         div_floor,
-        /// Integer or float division. Guaranteed no remainder.
-        /// For integers, wrapping is undefined behavior.
+        /// Same as `div_floor` with optimized float mode.
+        div_floor_optimized,
+        /// Integer or float division.
+        /// If a remainder would be produced, undefined behavior occurs.
+        /// For integers, overflow is undefined behavior.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         div_exact,
+        /// Same as `div_exact` with optimized float mode.
+        div_exact_optimized,
         /// Integer or float remainder division.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         rem,
+        /// Same as `rem` with optimized float mode.
+        rem_optimized,
         /// Integer or float modulus division.
         /// Both operands are guaranteed to be the same type, and the result type
         /// is the same as both operands.
         /// Uses the `bin_op` field.
         mod,
+        /// Same as `mod` with optimized float mode.
+        mod_optimized,
         /// Add an offset to a pointer, returning a new pointer.
         /// The offset is in element type units, not bytes.
         /// Wrapping is undefined behavior.
@@ -288,29 +313,50 @@ pub const Inst = struct {
         /// Rounds a floating pointer number to the nearest integer towards zero.
         /// Uses the `un_op` field.
         trunc_float,
+        /// Float negation. This affects the sign of zero, inf, and NaN, which is impossible
+        /// to do with sub. Integers are not allowed and must be represented with sub with
+        /// LHS of zero.
+        /// Uses the `un_op` field.
+        neg,
+        /// Same as `neg` with optimized float mode.
+        neg_optimized,
 
         /// `<`. Result type is always bool.
         /// Uses the `bin_op` field.
         cmp_lt,
+        /// Same as `cmp_lt` with optimized float mode.
+        cmp_lt_optimized,
         /// `<=`. Result type is always bool.
         /// Uses the `bin_op` field.
         cmp_lte,
+        /// Same as `cmp_lte` with optimized float mode.
+        cmp_lte_optimized,
         /// `==`. Result type is always bool.
         /// Uses the `bin_op` field.
         cmp_eq,
+        /// Same as `cmp_eq` with optimized float mode.
+        cmp_eq_optimized,
         /// `>=`. Result type is always bool.
         /// Uses the `bin_op` field.
         cmp_gte,
+        /// Same as `cmp_gte` with optimized float mode.
+        cmp_gte_optimized,
         /// `>`. Result type is always bool.
         /// Uses the `bin_op` field.
         cmp_gt,
+        /// Same as `cmp_gt` with optimized float mode.
+        cmp_gt_optimized,
         /// `!=`. Result type is always bool.
         /// Uses the `bin_op` field.
         cmp_neq,
+        /// Same as `cmp_neq` with optimized float mode.
+        cmp_neq_optimized,
         /// Conditional between two vectors.
         /// Result type is always a vector of bools.
         /// Uses the `ty_pl` field, payload is `VectorCmp`.
         cmp_vector,
+        /// Same as `cmp_vector` with optimized float mode.
+        cmp_vector_optimized,
 
         /// Conditional branch.
         /// Result type is always noreturn; no instructions in a block follow this one.
@@ -320,6 +366,20 @@ pub const Inst = struct {
         /// Result type is always noreturn; no instructions in a block follow this one.
         /// Uses the `pl_op` field. Operand is the condition. Payload is `SwitchBr`.
         switch_br,
+        /// Given an operand which is an error union, splits control flow. In
+        /// case of error, control flow goes into the block that is part of this
+        /// instruction, which is guaranteed to end with a return instruction
+        /// and never breaks out of the block.
+        /// In the case of non-error, control flow proceeds to the next instruction
+        /// after the `try`, with the result of this instruction being the unwrapped
+        /// payload value, as if `unwrap_errunion_payload` was executed on the operand.
+        /// Uses the `pl_op` field. Payload is `Try`.
+        @"try",
+        /// Same as `try` except the operand is a pointer to an error union, and the
+        /// result is a pointer to the payload. Result is as if `unwrap_errunion_payload_ptr`
+        /// was executed on the operand.
+        /// Uses the `ty_pl` field. Payload is `TryPtr`.
+        try_ptr,
         /// A comptime-known value. Uses the `ty_pl` field, payload is index of
         /// `values` array.
         constant,
@@ -534,6 +594,8 @@ pub const Inst = struct {
         /// Given a float operand, return the integer with the closest mathematical meaning.
         /// Uses the `ty_op` field.
         float_to_int,
+        /// Same as `float_to_int` with optimized float mode.
+        float_to_int_optimized,
         /// Given an integer operand, return the float with the closest mathematical meaning.
         /// Uses the `ty_op` field.
         int_to_float,
@@ -545,6 +607,8 @@ pub const Inst = struct {
         ///  * min, max, add, mul => integer or float
         /// Uses the `reduce` field.
         reduce,
+        /// Same as `reduce` with optimized float mode.
+        reduce_optimized,
         /// Given an integer, bool, float, or pointer operand, return a vector with all elements
         /// equal to the scalar value.
         /// Uses the `ty_op` field.
@@ -596,6 +660,10 @@ pub const Inst = struct {
         /// Uses the `pl_op` field with payload `AtomicRmw`. Operand is `ptr`.
         atomic_rmw,
 
+        /// Returns true if enum tag value has a name.
+        /// Uses the `un_op` field.
+        is_named_enum_value,
+
         /// Given an enum tag value, returns the tag name. The enum type may be non-exhaustive.
         /// Result type is always `[:0]const u8`.
         /// Uses the `un_op` field.
@@ -609,6 +677,8 @@ pub const Inst = struct {
         /// Some of the elements may be comptime-known.
         /// Uses the `ty_pl` field, payload is index of an array of elements, each of which
         /// is a `Ref`. Length of the array is given by the vector type.
+        /// If the type is an array with a sentinel, the AIR elements do not include it
+        /// explicitly.
         aggregate_init,
 
         /// Constructs a union from a field index and a runtime-known init value.
@@ -655,25 +725,25 @@ pub const Inst = struct {
         /// Sets the operand as the current error return trace,
         set_err_return_trace,
 
-        pub fn fromCmpOp(op: std.math.CompareOperator) Tag {
-            return switch (op) {
-                .lt => .cmp_lt,
-                .lte => .cmp_lte,
-                .eq => .cmp_eq,
-                .gte => .cmp_gte,
-                .gt => .cmp_gt,
-                .neq => .cmp_neq,
-            };
+        pub fn fromCmpOp(op: std.math.CompareOperator, optimized: bool) Tag {
+            switch (op) {
+                .lt => return if (optimized) .cmp_lt_optimized else .cmp_lt,
+                .lte => return if (optimized) .cmp_lte_optimized else .cmp_lte,
+                .eq => return if (optimized) .cmp_eq_optimized else .cmp_eq,
+                .gte => return if (optimized) .cmp_gte_optimized else .cmp_gte,
+                .gt => return if (optimized) .cmp_gt_optimized else .cmp_gt,
+                .neq => return if (optimized) .cmp_neq_optimized else .cmp_neq,
+            }
         }
 
         pub fn toCmpOp(tag: Tag) ?std.math.CompareOperator {
             return switch (tag) {
-                .cmp_lt => .lt,
-                .cmp_lte => .lte,
-                .cmp_eq => .eq,
-                .cmp_gte => .gte,
-                .cmp_gt => .gt,
-                .cmp_neq => .neq,
+                .cmp_lt, .cmp_lt_optimized => .lt,
+                .cmp_lte, .cmp_lte_optimized => .lte,
+                .cmp_eq, .cmp_eq_optimized => .eq,
+                .cmp_gte, .cmp_gte_optimized => .gte,
+                .cmp_gt, .cmp_gt_optimized => .gt,
+                .cmp_neq, .cmp_neq_optimized => .neq,
                 else => null,
             };
         }
@@ -776,6 +846,19 @@ pub const SwitchBr = struct {
         items_len: u32,
         body_len: u32,
     };
+};
+
+/// This data is stored inside extra. Trailing:
+/// 0. body: Inst.Index // for each body_len
+pub const Try = struct {
+    body_len: u32,
+};
+
+/// This data is stored inside extra. Trailing:
+/// 0. body: Inst.Index // for each body_len
+pub const TryPtr = struct {
+    ptr: Inst.Ref,
+    body_len: u32,
 };
 
 pub const StructField = struct {
@@ -925,6 +1008,18 @@ pub fn typeOfIndex(air: Air, inst: Air.Inst.Index) Type {
         .max,
         .bool_and,
         .bool_or,
+        .add_optimized,
+        .addwrap_optimized,
+        .sub_optimized,
+        .subwrap_optimized,
+        .mul_optimized,
+        .mulwrap_optimized,
+        .div_float_optimized,
+        .div_trunc_optimized,
+        .div_floor_optimized,
+        .div_exact_optimized,
+        .rem_optimized,
+        .mod_optimized,
         => return air.typeOf(datas[inst].bin_op.lhs),
 
         .sqrt,
@@ -941,6 +1036,8 @@ pub fn typeOfIndex(air: Air, inst: Air.Inst.Index) Type {
         .ceil,
         .round,
         .trunc_float,
+        .neg,
+        .neg_optimized,
         => return air.typeOf(datas[inst].un_op),
 
         .cmp_lt,
@@ -949,6 +1046,12 @@ pub fn typeOfIndex(air: Air, inst: Air.Inst.Index) Type {
         .cmp_gte,
         .cmp_gt,
         .cmp_neq,
+        .cmp_lt_optimized,
+        .cmp_lte_optimized,
+        .cmp_eq_optimized,
+        .cmp_gte_optimized,
+        .cmp_gt_optimized,
+        .cmp_neq_optimized,
         .cmp_lt_errors_len,
         .is_null,
         .is_non_null,
@@ -958,6 +1061,7 @@ pub fn typeOfIndex(air: Air, inst: Air.Inst.Index) Type {
         .is_non_err,
         .is_err_ptr,
         .is_non_err_ptr,
+        .is_named_enum_value,
         => return Type.bool,
 
         .const_ty => return Type.type,
@@ -983,12 +1087,14 @@ pub fn typeOfIndex(air: Air, inst: Air.Inst.Index) Type {
         .union_init,
         .field_parent_ptr,
         .cmp_vector,
+        .cmp_vector_optimized,
         .add_with_overflow,
         .sub_with_overflow,
         .mul_with_overflow,
         .shl_with_overflow,
         .ptr_add,
         .ptr_sub,
+        .try_ptr,
         => return air.getRefType(datas[inst].ty_pl.ty),
 
         .not,
@@ -1018,6 +1124,7 @@ pub fn typeOfIndex(air: Air, inst: Air.Inst.Index) Type {
         .struct_field_ptr_index_3,
         .array_to_slice,
         .float_to_int,
+        .float_to_int_optimized,
         .int_to_float,
         .splat,
         .get_union_tag,
@@ -1093,12 +1200,17 @@ pub fn typeOfIndex(air: Air, inst: Air.Inst.Index) Type {
             return ptr_ty.elemType();
         },
 
-        .reduce => return air.typeOf(datas[inst].reduce.operand).childType(),
+        .reduce, .reduce_optimized => return air.typeOf(datas[inst].reduce.operand).childType(),
 
         .mul_add => return air.typeOf(datas[inst].pl_op.operand),
         .select => {
             const extra = air.extraData(Air.Bin, datas[inst].pl_op.payload).data;
             return air.typeOf(extra.lhs);
+        },
+
+        .@"try" => {
+            const err_union_ty = air.typeOf(datas[inst].pl_op.operand);
+            return err_union_ty.errorUnionPayload();
         },
     }
 }

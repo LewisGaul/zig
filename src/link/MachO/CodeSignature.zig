@@ -250,8 +250,9 @@ pub fn addEntitlements(self: *CodeSignature, allocator: Allocator, path: []const
 
 pub const WriteOpts = struct {
     file: fs.File,
-    text_segment: macho.segment_command_64,
-    code_sig_cmd: macho.linkedit_data_command,
+    exec_seg_base: u64,
+    exec_seg_limit: u64,
+    file_size: u32,
     output_mode: std.builtin.OutputMode,
 };
 
@@ -270,13 +271,12 @@ pub fn writeAdhocSignature(
     var blobs = std.ArrayList(Blob).init(allocator);
     defer blobs.deinit();
 
-    self.code_directory.inner.execSegBase = opts.text_segment.fileoff;
-    self.code_directory.inner.execSegLimit = opts.text_segment.filesize;
+    self.code_directory.inner.execSegBase = opts.exec_seg_base;
+    self.code_directory.inner.execSegLimit = opts.exec_seg_limit;
     self.code_directory.inner.execSegFlags = if (opts.output_mode == .Exe) macho.CS_EXECSEG_MAIN_BINARY else 0;
-    const file_size = opts.code_sig_cmd.dataoff;
-    self.code_directory.inner.codeLimit = file_size;
+    self.code_directory.inner.codeLimit = opts.file_size;
 
-    const total_pages = mem.alignForward(file_size, self.page_size) / self.page_size;
+    const total_pages = mem.alignForward(opts.file_size, self.page_size) / self.page_size;
 
     var buffer = try allocator.alloc(u8, self.page_size);
     defer allocator.free(buffer);
@@ -288,7 +288,10 @@ pub fn writeAdhocSignature(
     var i: usize = 0;
     while (i < total_pages) : (i += 1) {
         const fstart = i * self.page_size;
-        const fsize = if (fstart + self.page_size > file_size) file_size - fstart else self.page_size;
+        const fsize = if (fstart + self.page_size > opts.file_size)
+            opts.file_size - fstart
+        else
+            self.page_size;
         const len = try opts.file.preadAll(buffer, fstart);
         assert(fsize <= len);
 
